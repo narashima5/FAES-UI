@@ -1,27 +1,34 @@
 import React, { useState } from 'react';
-import { Box, Typography, TextField, Button, Alert, CircularProgress, Grid, Paper } from '@mui/material';
+import { Box, Typography, TextField, Button, CircularProgress, Grid, Paper } from '@mui/material';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useError } from '../context/ErrorContext.jsx';
 import { useNavigate } from 'react-router-dom';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const { showError } = useError();
 
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setErrorMsg('');
     setLoading(true);
     try {
       // Role is automatically securely extrapolated from the backend JWT payload.
       await login(email, password, 'generic'); 
       navigate('/dashboard');
     } catch (error) {
-      setErrorMsg(error.message || 'Login failed. Please verify credentials.');
+      let msg = 'Login failed. Please verify credentials.';
+      if (error.response) {
+         try {
+            const body = await error.response.clone().json();
+            if (body.message) msg = body.message;
+         } catch(e) {}
+      }
+      showError(msg, 'Authentication Failed');
     } finally {
        setLoading(false);
     }
@@ -63,9 +70,6 @@ const Login = () => {
           </Typography>
 
           <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
-            {errorMsg && (
-               <Alert severity="error" sx={{ mb: 4, borderRadius: 1 }}>{errorMsg}</Alert>
-            )}
 
             <Typography variant="subtitle2" color="textSecondary" sx={{ mb: 1, fontWeight: 600 }}>Email Address</Typography>
             <TextField
