@@ -41,6 +41,7 @@ const IqacDashboard = () => {
     const groups = {};
 
     submissions.forEach(sub => {
+      if (sub.status !== 'pending') return;
       const deptName = sub.user_id?.department_id?.name || 'Unassigned Department';
       const facultyId = sub.user_id?._id || 'deleted';
       const facultyName = sub.user_id?.name || 'Deleted User';

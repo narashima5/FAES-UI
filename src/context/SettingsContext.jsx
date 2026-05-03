@@ -12,7 +12,7 @@ export const SettingsProvider = ({ children }) => {
     queryKey: ['settings'],
     queryFn: fetchSettings,
     staleTime: Infinity,
-    refetchInterval: 30000 // refresh settings every 30s in case admin updates
+    retry: false
   });
 
   const dynamicTheme = useMemo(() => createTheme({
@@ -27,8 +27,16 @@ export const SettingsProvider = ({ children }) => {
     },
   }), [settings?.primary_color]);
 
-  if (isLoading) {
-    return null; // or a tiny loader
+  if (isLoading && !settings) {
+    // Return children with default theme to avoid blocking the whole app if API is slow or down
+    return (
+      <SettingsContext.Provider value={{ settings: null }}>
+        <ThemeProvider theme={dynamicTheme}>
+          <CssBaseline />
+          {children}
+        </ThemeProvider>
+      </SettingsContext.Provider>
+    );
   }
 
   return (

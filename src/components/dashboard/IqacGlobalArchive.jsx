@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Box, Typography, Button, Paper, Grid, FormControl, InputLabel, Select, MenuItem, TextField, Table, TableHead, TableRow, TableCell, TableBody, TablePagination } from '@mui/material';
-import { PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material';
+import { Box, Typography, Button, Paper, Grid, FormControl, InputLabel, Select, MenuItem, TextField, Table, TableHead, TableRow, TableCell, TableBody, Accordion, AccordionSummary, AccordionDetails } from '@mui/material';
+import { PictureAsPdf as PictureAsPdfIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import html2pdf from 'html2pdf.js';
 
 const IqacGlobalArchive = ({ submissions, setSelectedStaffGroup, setStaffActivitiesOpen }) => {
@@ -11,8 +11,15 @@ const IqacGlobalArchive = ({ submissions, setSelectedStaffGroup, setStaffActivit
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchStaff, setSearchStaff] = useState('');
   
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [expandedMonth, setExpandedMonth] = useState(false);
+  const [expandedDept, setExpandedDept] = useState(false);
+
+  const handleMonthChange = (panel) => (event, isExpanded) => {
+     setExpandedMonth(isExpanded ? panel : false);
+  };
+  const handleDeptChange = (panel) => (event, isExpanded) => {
+     setExpandedDept(isExpanded ? panel : false);
+  };
 
   const pdfRef = useRef();
 
@@ -48,32 +55,39 @@ const IqacGlobalArchive = ({ submissions, setSelectedStaffGroup, setStaffActivit
      }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   }, [submissions, filterMonth, filterYear, filterDept, filterSection, filterStatus, searchStaff]);
 
-  const groupedStaffArchive = useMemo(() => {
-     if (!filteredArchive) return [];
+  const hierarchicalData = useMemo(() => {
+     if (!filteredArchive) return {};
      const groups = {};
+
      filteredArchive.forEach(sub => {
+        const d = new Date(sub.createdAt);
+        const monthYear = `${d.toLocaleString('default', { month: 'long' })} ${d.getFullYear()}`;
+        const dept = sub.user_id?.department_id?.name || 'Unassigned';
         const staffId = sub.user_id?._id || 'unknown';
-        if (!groups[staffId]) {
-           groups[staffId] = {
+
+        if (!groups[monthYear]) groups[monthYear] = {};
+        if (!groups[monthYear][dept]) groups[monthYear][dept] = {};
+        
+        if (!groups[monthYear][dept][staffId]) {
+           groups[monthYear][dept][staffId] = {
               staffDetails: {
                  name: sub.user_id?.name || 'Unknown',
-                 department: sub.user_id?.department_id?.name || 'Unassigned',
+                 department: dept,
                  _id: staffId
               },
               latestDate: new Date(0),
               submissions: []
            };
         }
-        groups[staffId].submissions.push(sub);
-        const subDate = new Date(sub.createdAt);
-        if (subDate > groups[staffId].latestDate) {
-           groups[staffId].latestDate = subDate;
+        
+        groups[monthYear][dept][staffId].submissions.push(sub);
+        if (d > groups[monthYear][dept][staffId].latestDate) {
+           groups[monthYear][dept][staffId].latestDate = d;
         }
      });
-     return Object.values(groups).sort((a, b) => b.latestDate - a.latestDate);
-  }, [filteredArchive]);
 
-  const pagedStaffArchive = groupedStaffArchive.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+     return groups;
+  }, [filteredArchive]);
 
   const exportPDF = () => {
      const element = pdfRef.current;
@@ -94,7 +108,7 @@ const IqacGlobalArchive = ({ submissions, setSelectedStaffGroup, setStaffActivit
     <Box>
        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h5" color="primary" sx={{ fontWeight: 'bold' }}>Global Submissions Archive</Typography>
-          <Button variant="contained" color="secondary" startIcon={<PictureAsPdfIcon />} onClick={exportPDF} disabled={groupedStaffArchive.length === 0}>
+          <Button variant="contained" color="secondary" startIcon={<PictureAsPdfIcon />} onClick={exportPDF} disabled={Object.keys(hierarchicalData).length === 0}>
              Export View to PDF
           </Button>
        </Box>
@@ -104,7 +118,7 @@ const IqacGlobalArchive = ({ submissions, setSelectedStaffGroup, setStaffActivit
              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth size="small">
                    <InputLabel>Month</InputLabel>
-                   <Select value={filterMonth} label="Month" onChange={e => {setFilterMonth(e.target.value); setPage(0);}}>
+                   <Select value={filterMonth} label="Month" onChange={e => {setFilterMonth(e.target.value);}}>
                       <MenuItem value="all">All Months</MenuItem>
                       {Array.from({length: 12}).map((_, i) => (
                          <MenuItem key={i} value={i}>{new Date(0, i).toLocaleString('en', { month: 'short' })}</MenuItem>
@@ -115,7 +129,7 @@ const IqacGlobalArchive = ({ submissions, setSelectedStaffGroup, setStaffActivit
              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth size="small">
                    <InputLabel>Year</InputLabel>
-                   <Select value={filterYear} label="Year" onChange={e => {setFilterYear(e.target.value); setPage(0);}}>
+                   <Select value={filterYear} label="Year" onChange={e => {setFilterYear(e.target.value);}}>
                       <MenuItem value="all">All Years</MenuItem>
                       {uniqueYears.map(y => <MenuItem key={y} value={y}>{y}</MenuItem>)}
                    </Select>
@@ -124,7 +138,7 @@ const IqacGlobalArchive = ({ submissions, setSelectedStaffGroup, setStaffActivit
              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth size="small">
                    <InputLabel>Department</InputLabel>
-                   <Select value={filterDept} label="Department" onChange={e => {setFilterDept(e.target.value); setPage(0);}}>
+                   <Select value={filterDept} label="Department" onChange={e => {setFilterDept(e.target.value);}}>
                       <MenuItem value="all">All Departments</MenuItem>
                       {uniqueDepts.map(d => <MenuItem key={d} value={d}>{d}</MenuItem>)}
                    </Select>
@@ -133,7 +147,7 @@ const IqacGlobalArchive = ({ submissions, setSelectedStaffGroup, setStaffActivit
              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth size="small">
                    <InputLabel>Section</InputLabel>
-                   <Select value={filterSection} label="Section" onChange={e => {setFilterSection(e.target.value); setPage(0);}}>
+                   <Select value={filterSection} label="Section" onChange={e => {setFilterSection(e.target.value);}}>
                       <MenuItem value="all">All Sections</MenuItem>
                       {uniqueSections.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
                    </Select>
@@ -142,7 +156,7 @@ const IqacGlobalArchive = ({ submissions, setSelectedStaffGroup, setStaffActivit
              <Grid item xs={12} sm={6} md={2}>
                 <FormControl fullWidth size="small">
                    <InputLabel>Status</InputLabel>
-                   <Select value={filterStatus} label="Status" onChange={e => {setFilterStatus(e.target.value); setPage(0);}}>
+                   <Select value={filterStatus} label="Status" onChange={e => {setFilterStatus(e.target.value);}}>
                       <MenuItem value="all">All Statuses</MenuItem>
                       <MenuItem value="pending">Pending</MenuItem>
                       <MenuItem value="approved">Approved</MenuItem>
@@ -152,77 +166,95 @@ const IqacGlobalArchive = ({ submissions, setSelectedStaffGroup, setStaffActivit
              <Grid item xs={12} sm={6} md={2}>
                 <TextField 
                    fullWidth size="small" label="Search Staff Name" 
-                   value={searchStaff} onChange={e => {setSearchStaff(e.target.value); setPage(0);}} 
+                   value={searchStaff} onChange={e => {setSearchStaff(e.target.value);}} 
                 />
              </Grid>
           </Grid>
        </Paper>
 
-       <Paper sx={{ overflowX: 'auto', mb: 2 }}>
-           <Table>
-             <TableHead sx={{ bgcolor: '#f5f5f5' }}>
-                <TableRow>
-                   <TableCell sx={{ fontWeight: 'bold' }}>Staff Name</TableCell>
-                   <TableCell sx={{ fontWeight: 'bold' }}>Department</TableCell>
-                   <TableCell sx={{ fontWeight: 'bold' }} align="center">Total Submissions</TableCell>
-                   <TableCell sx={{ fontWeight: 'bold' }} align="center">Latest Activity</TableCell>
-                   <TableCell sx={{ fontWeight: 'bold' }} align="center">Actions</TableCell>
-                </TableRow>
-             </TableHead>
-             <TableBody>
-                {pagedStaffArchive.map(group => (
-                   <TableRow key={group.staffDetails._id} hover onClick={() => { setSelectedStaffGroup(group); setStaffActivitiesOpen(true); }} sx={{ cursor: 'pointer' }}>
-                      <TableCell>{group.staffDetails.name}</TableCell>
-                      <TableCell>{group.staffDetails.department}</TableCell>
-                      <TableCell align="center">{group.submissions.length}</TableCell>
-                      <TableCell align="center">{group.latestDate.toLocaleDateString()}</TableCell>
-                      <TableCell align="center">
-                         <Button size="small" variant="outlined">View Log</Button>
-                      </TableCell>
-                   </TableRow>
-                ))}
-                {pagedStaffArchive.length === 0 && (
-                   <TableRow>
-                      <TableCell colSpan={5} align="center" sx={{ py: 3 }}>No staff match the current filters.</TableCell>
-                   </TableRow>
-                )}
-             </TableBody>
-          </Table>
-          <TablePagination
-             component="div"
-             count={groupedStaffArchive.length}
-             page={page}
-             onPageChange={(e, newPage) => setPage(newPage)}
-             rowsPerPage={rowsPerPage}
-             onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
-          />
-       </Paper>
+       <Box sx={{ mb: 2 }}>
+          {Object.keys(hierarchicalData).length === 0 ? (
+             <Paper sx={{ p: 4, textAlign: 'center' }}>
+                <Typography color="textSecondary">No submissions match the current filters.</Typography>
+             </Paper>
+          ) : (
+             Object.entries(hierarchicalData).map(([monthYear, depts]) => (
+                <Accordion key={monthYear} expanded={expandedMonth === monthYear} onChange={handleMonthChange(monthYear)} sx={{ mb: 2, border: '1px solid #1976d2', borderRadius: '4px', '&:before': { display: 'none' } }}>
+                   <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ bgcolor: '#e3f2fd', borderRadius: '4px' }}>
+                      <Typography variant="h6" color="primary" sx={{ fontWeight: 'bold' }}>{monthYear}</Typography>
+                   </AccordionSummary>
+                   <AccordionDetails sx={{ p: 2, pt: 3, bgcolor: '#ffffff' }}>
+                      {Object.entries(depts).map(([deptName, staffGroups]) => (
+                         <Accordion key={`${monthYear}-${deptName}`} expanded={expandedDept === `${monthYear}-${deptName}`} onChange={handleDeptChange(`${monthYear}-${deptName}`)} sx={{ mb: 2, border: '1px solid #cfd8dc', boxShadow: 'none', '&:before': { display: 'none' } }}>
+                            <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ bgcolor: '#eceff1' }}>
+                               <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>Department: {deptName}</Typography>
+                            </AccordionSummary>
+                            <AccordionDetails sx={{ p: 0 }}>
+                               <Table>
+                                 <TableHead sx={{ bgcolor: '#f5f5f5' }}>
+                                    <TableRow>
+                                       <TableCell sx={{ fontWeight: 'bold' }}>Staff Name</TableCell>
+                                       <TableCell sx={{ fontWeight: 'bold' }} align="center">Total Submissions</TableCell>
+                                       <TableCell sx={{ fontWeight: 'bold' }} align="center">Latest Activity</TableCell>
+                                       <TableCell sx={{ fontWeight: 'bold' }} align="center">Actions</TableCell>
+                                    </TableRow>
+                                 </TableHead>
+                                 <TableBody>
+                                    {Object.values(staffGroups).sort((a,b) => b.latestDate - a.latestDate).map(group => (
+                                       <TableRow key={group.staffDetails._id} hover onClick={() => { setSelectedStaffGroup(group); setStaffActivitiesOpen(true); }} sx={{ cursor: 'pointer' }}>
+                                          <TableCell>{group.staffDetails.name}</TableCell>
+                                          <TableCell align="center">{group.submissions.length}</TableCell>
+                                          <TableCell align="center">{group.latestDate.toLocaleDateString()}</TableCell>
+                                          <TableCell align="center">
+                                             <Button size="small" variant="outlined">View Log</Button>
+                                          </TableCell>
+                                       </TableRow>
+                                    ))}
+                                 </TableBody>
+                               </Table>
+                            </AccordionDetails>
+                         </Accordion>
+                      ))}
+                   </AccordionDetails>
+                </Accordion>
+             ))
+          )}
+       </Box>
 
        {/* Hidden PDF Layout */}
        <div style={{ display: 'none' }}>
           <Box ref={pdfRef} sx={{ p: 4, bgcolor: 'white', color: 'black' }}>
              <Typography variant="h4" mb={1} align="center" fontWeight="bold">Global Archive Submissions Export</Typography>
              <Typography variant="subtitle1" mb={4} align="center" color="textSecondary">Generated on {new Date().toLocaleString()}</Typography>
-             <Table size="small">
-                <TableHead sx={{ bgcolor: '#eceff1' }}>
-                   <TableRow>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Staff Name</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Department</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }} align="center">Total Submissions</TableCell>
-                      <TableCell sx={{ fontWeight: 'bold' }} align="center">Latest Activity</TableCell>
-                   </TableRow>
-                </TableHead>
-                <TableBody>
-                   {groupedStaffArchive.map(group => (
-                      <TableRow key={group.staffDetails._id}>
-                         <TableCell>{group.staffDetails.name}</TableCell>
-                         <TableCell>{group.staffDetails.department}</TableCell>
-                         <TableCell align="center">{group.submissions.length}</TableCell>
-                         <TableCell align="center">{group.latestDate.toLocaleDateString()}</TableCell>
-                      </TableRow>
+             
+             {Object.entries(hierarchicalData).map(([monthYear, depts]) => (
+                <Box key={`pdf-${monthYear}`} sx={{ mb: 4 }}>
+                   <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 2, bgcolor: '#f0f0f0', p: 1 }}>{monthYear}</Typography>
+                   {Object.entries(depts).map(([deptName, staffGroups]) => (
+                      <Box key={`pdf-${monthYear}-${deptName}`} sx={{ mb: 3, ml: 2 }}>
+                         <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>Department: {deptName}</Typography>
+                         <Table size="small">
+                            <TableHead sx={{ bgcolor: '#eceff1' }}>
+                               <TableRow>
+                                  <TableCell sx={{ fontWeight: 'bold' }}>Staff Name</TableCell>
+                                  <TableCell sx={{ fontWeight: 'bold' }} align="center">Total Submissions</TableCell>
+                                  <TableCell sx={{ fontWeight: 'bold' }} align="center">Latest Activity</TableCell>
+                               </TableRow>
+                            </TableHead>
+                            <TableBody>
+                               {Object.values(staffGroups).map(group => (
+                                  <TableRow key={group.staffDetails._id}>
+                                     <TableCell>{group.staffDetails.name}</TableCell>
+                                     <TableCell align="center">{group.submissions.length}</TableCell>
+                                     <TableCell align="center">{group.latestDate.toLocaleDateString()}</TableCell>
+                                  </TableRow>
+                               ))}
+                            </TableBody>
+                         </Table>
+                      </Box>
                    ))}
-                </TableBody>
-             </Table>
+                </Box>
+             ))}
           </Box>
        </div>
     </Box>
