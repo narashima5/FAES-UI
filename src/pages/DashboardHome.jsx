@@ -1,7 +1,8 @@
 import React from 'react';
-import { Grid, Card, CardContent, Typography, Box, CircularProgress, Divider, List, ListItem, ListItemText, Chip, Button } from '@mui/material';
+import { Grid, Card, CardContent, Typography, Box, CircularProgress, Divider, List, ListItem, ListItemText, Chip, Button, Alert } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSummary } from '../api/commonApi.js';
+import { fetchDepartments } from '../api/adminApi.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 
@@ -9,6 +10,10 @@ const DashboardHome = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { data: summary, isLoading } = useQuery({ queryKey: ['dashboardSummary'], queryFn: fetchSummary });
+  const { data: departments } = useQuery({ queryKey: ['departments'], queryFn: fetchDepartments });
+
+  const myDepartment = departments?.find(d => d._id === user.department_id?._id || d._id === user.department_id);
+  const noticeboard = myDepartment?.noticeboard;
 
   if (isLoading) return <Box sx={{ display: 'flex', mt: 4 }}><CircularProgress /></Box>;
 
@@ -82,6 +87,12 @@ const DashboardHome = () => {
 
   return (
     <Box>
+      {(user.role === 'staff' || user.role === 'hod') && noticeboard && (
+         <Alert severity="info" sx={{ mb: 4, border: '1px solid #0288d1', backgroundColor: '#e1f5fe' }}>
+            <strong>Notice from HOD:</strong> {noticeboard}
+         </Alert>
+      )}
+      
       <Typography variant="h5" mb={3} color="primary" sx={{ fontWeight: 'bold' }}>Performance Overview</Typography>
 
       {user.role === 'staff' || user.role === 'hod' ? renderStaffHodCards() : null}

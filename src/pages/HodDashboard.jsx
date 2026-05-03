@@ -1,21 +1,64 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { fetchDepartmentReport } from '../api/reportApi.js';
+import { fetchDepartmentStaff, updateNoticeboard } from '../api/hodApi.js';
+import { fetchDepartments } from '../api/adminApi.js';
+import { Container, Box, Button } from '@mui/material';
+
 import StaffDashboard from './StaffDashboard.jsx';
-import { Container, Typography, Box, Button, Table, TableBody, TableCell, TableHead, TableRow, Paper, Divider, FormControl, InputLabel, Select, MenuItem, Grid } from '@mui/material';
+import HodDepartmentStaffConfig from '../components/dashboard/HodDepartmentStaffConfig.jsx';
+import HodReportGenerator from '../components/dashboard/HodReportGenerator.jsx';
 
 const HodDashboard = () => {
-  const { logout } = useAuth();
+  const { user } = useAuth();
   const location = useLocation();
   const isStaffView = location.pathname.includes('department-staff');
 
   const [view, setView] = useState('report'); 
   const [filterMonth, setFilterMonth] = useState('all');
   const [filterStaff, setFilterStaff] = useState('all');
+  const [notice, setNotice] = useState('');
+  const [snack, setSnack] = useState(false);
 
-  const { data: report, isLoading } = useQuery({ queryKey: ['deptReport'], queryFn: fetchDepartmentReport, enabled: view === 'report' });
+  const { data: report, isLoading } = useQuery({ queryKey: ['deptReport'], queryFn: fetchDepartmentReport });
+  const { data: departmentStaff } = useQuery({ queryKey: ['deptStaff'], queryFn: fetchDepartmentStaff, enabled: isStaffView });
+  const { data: departments } = useQuery({ queryKey: ['departments'], queryFn: fetchDepartments, enabled: isStaffView });
+
+  const myDepartment = useMemo(() => {
+     if (!departments) return null;
+     return departments.find(d => d._id === user.department_id?._id || d._id === user.department_id);
+  }, [departments, user.department_id]);
+
+  useEffect(() => {
+    if (myDepartment?.noticeboard) setNotice(myDepartment.noticeboard);
+  }, [myDepartment]);
+
+  const updateNoticeMutation = useMutation({
+    mutationFn: updateNoticeboard,
+    onSuccess: () => { setSnack(true); }
+  });
+
+  const handleBroadcast = () => {
+    updateNoticeMutation.mutate(notice);
+  };
+
+  const currentMonth = new Date().getMonth();
+  const currentMonthReport = report?.filter(sub => new Date(sub.createdAt).getMonth() === currentMonth) || [];
+
+  const staffMetrics = useMemo(() => {
+    if (!departmentStaff) return [];
+    return departmentStaff.map(staff => {
+       const userSubs = currentMonthReport.filter(sub => sub.user_id?._id === staff._id);
+       const approvedSubs = userSubs.filter(sub => sub.status === 'approved' && sub.marks);
+       const totalMarks = approvedSubs.reduce((acc, sub) => acc + sub.marks, 0);
+       return { ...staff, submissionCount: userSubs.length, totalMarks };
+    }).sort((a, b) => b.totalMarks - a.totalMarks);
+  }, [departmentStaff, currentMonthReport]);
+
+  const delinquentStaff = staffMetrics.filter(s => s.submissionCount === 0);
+  const leaderboard = staffMetrics.slice(0, 5);
 
   const uniqueStaff = Array.from(new Set(report?.map(r => JSON.stringify({ id: r.user_id?._id, name: r.user_id?.name }))))
     .map(str => JSON.parse(str))
@@ -28,94 +71,59 @@ const HodDashboard = () => {
     return mMatch && sMatch;
   });
 
+  const groupedReport = useMemo(() => {
+     if (!filteredReport) return [];
+     const map = {};
+     filteredReport.forEach(r => {
+        const uid = r.user_id?._id;
+        if (!uid) return;
+        if (!map[uid]) {
+           map[uid] = {
+              id: uid,
+              user_id: r.user_id,
+              name: r.user_id.name,
+              totalActivities: 0,
+              totalMarks: 0
+           };
+        }
+        map[uid].totalActivities += 1;
+        if (r.status === 'approved' && r.marks) {
+           map[uid].totalMarks += r.marks;
+        }
+     });
+     return Object.values(map);
+  }, [filteredReport]);
+
   return (
-    <>
-      <Container maxWidth="xl" sx={{ mt: 2, mb: 2 }}>
-        {isStaffView ? (
-           <Box>
-              <Typography variant="h5" mb={3} color="primary" sx={{ fontWeight: 'bold' }}>Department Staff Configuration</Typography>
-              <Paper sx={{ p: 6, textAlign: 'center' }}>
-                 <Typography color="textSecondary" variant="h6">Staff Management Tools under construction.</Typography>
-              </Paper>
-           </Box>
-        ) : (
-          <Box>
-            <Box sx={{ display: 'flex', gap: 4, mb: 4 }}>
-               <Button variant={view === 'staff' ? 'contained' : 'outlined'} onClick={() => setView('staff')}>My Personal Submissions</Button>
-               <Button variant={view === 'report' ? 'contained' : 'outlined'} onClick={() => setView('report')}>Department Report Generator</Button>
-            </Box>
+    <Container maxWidth="xl" sx={{ mt: 2, mb: 2 }}>
+      {isStaffView ? (
+         <HodDepartmentStaffConfig 
+            notice={notice} setNotice={setNotice} handleBroadcast={handleBroadcast} 
+            updateNoticeMutation={updateNoticeMutation} delinquentStaff={delinquentStaff} 
+            leaderboard={leaderboard} staffMetrics={staffMetrics} snack={snack} setSnack={setSnack}
+         />
+      ) : (
+        <Box>
+          <Box sx={{ display: 'flex', gap: 4, mb: 4 }}>
+             <Button variant={view === 'staff' ? 'contained' : 'outlined'} onClick={() => setView('staff')}>My Personal Submissions</Button>
+             <Button variant={view === 'report' ? 'contained' : 'outlined'} onClick={() => setView('report')}>Department Report Generator</Button>
+          </Box>
 
-        {view === 'staff' ? (
-           <Box mt={2}>
-              <StaffDashboard />
-           </Box>
-        ) : (
-           <Box>
-              <Typography variant="h5" mb={3}>Monthly Report Generator</Typography>
-              
-              <Paper sx={{ p: 3, mb: 4 }}>
-                <Grid container spacing={4}>
-                   <Grid item xs={12} sm={6}>
-                      <FormControl fullWidth>
-                         <InputLabel>Filter By Month</InputLabel>
-                         <Select value={filterMonth} label="Filter By Month" onChange={e => setFilterMonth(e.target.value)}>
-                            <MenuItem value="all">All Months</MenuItem>
-                            {Array.from({length: 12}).map((_, i) => (
-                               <MenuItem key={i} value={i}>{new Date(0, i).toLocaleString('en', { month: 'long' })}</MenuItem>
-                            ))}
-                         </Select>
-                      </FormControl>
-                   </Grid>
-                   <Grid item xs={12} sm={6}>
-                      <FormControl fullWidth>
-                         <InputLabel>Filter By Staff</InputLabel>
-                         <Select value={filterStaff} label="Filter By Staff" onChange={e => setFilterStaff(e.target.value)}>
-                            <MenuItem value="all">All Staff Members</MenuItem>
-                            {uniqueStaff.map(s => (
-                               <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-                            ))}
-                         </Select>
-                      </FormControl>
-                   </Grid>
-                </Grid>
-              </Paper>
-
-              <Paper sx={{ p: 2, overflowX: 'auto' }}>
-                {isLoading ? <Typography>Loading...</Typography> : (
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Staff Name</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Activity Title</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Section</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Marks</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Submitted At</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {filteredReport?.length > 0 ? filteredReport.map(sub => (
-                        <TableRow key={sub._id}>
-                          <TableCell>{sub.user_id?.name}</TableCell>
-                          <TableCell>{sub.activity_id?.title}</TableCell>
-                          <TableCell>{sub.activity_id?.section_id?.title || 'Main'}</TableCell>
-                          <TableCell>{sub.status === 'approved' ? (sub.marks || 0) : 'Pending'}</TableCell>
-                          <TableCell>{new Date(sub.createdAt).toLocaleDateString()}</TableCell>
-                        </TableRow>
-                      )) : (
-                        <TableRow>
-                           <TableCell colSpan={5} align="center">No records match the active filters.</TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                )}
-              </Paper>
-           </Box>
-        )}
+          {view === 'staff' ? (
+             <Box mt={2}>
+                <StaffDashboard />
+             </Box>
+          ) : (
+             <HodReportGenerator 
+                filterMonth={filterMonth} setFilterMonth={setFilterMonth} 
+                filterStaff={filterStaff} setFilterStaff={setFilterStaff} 
+                uniqueStaff={uniqueStaff} isLoading={isLoading} groupedReport={groupedReport} 
+             />
+          )}
         </Box>
-        )}
-      </Container>
-    </>
+      )}
+    </Container>
   );
 };
+
 export default HodDashboard;

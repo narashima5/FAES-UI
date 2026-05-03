@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useSettings } from '../context/SettingsContext.jsx';
 import { 
   AppBar, Toolbar, Typography, Drawer, List, ListItem, ListItemIcon, 
   ListItemText, ListItemButton, Box, IconButton, CssBaseline, Divider
@@ -45,6 +46,7 @@ const menuConfigs = {
 
 const Layout = () => {
   const { user, logout } = useAuth();
+  const { settings } = useSettings();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -57,7 +59,7 @@ const Layout = () => {
     <div>
       <Toolbar>
         <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold' }}>
-          FAES Panel
+          {settings?.platform_title || 'FAES Panel'}
         </Typography>
       </Toolbar>
       <Divider />

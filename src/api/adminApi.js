@@ -17,3 +17,7 @@ export const createSubSection = ({ section_id, title }) => api.post('activities/
 export const createActivity = (activityData) => api.post('activities', { json: activityData }).json();
 export const updateActivity = ({ id, payload }) => api.put(`activities/${id}`, { json: payload }).json();
 export const deleteActivity = (id) => api.delete(`activities/${id}`).json();
+
+// Settings
+export const fetchSettings = () => api.get('settings').json();
+export const updateSettings = (settingsData) => api.put('settings', { json: settingsData }).json();
